@@ -2,7 +2,7 @@ import os
 from datetime import datetime
 from flask import Flask, jsonify, request, send_from_directory
 
-app = Flask(__name__, static_folder="static", static_url_path="/static")
+app = Flask(__name__)
 applications = []
 
 STATUSES = ["Applied", "Interview", "Offer", "Reject"]
