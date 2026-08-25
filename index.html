@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Job Application Tracker</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--ink:#172033;--muted:#697386;--line:#e6e9ef;--accent:#2563eb}
+*{box-sizing:border-box}body{margin:0;font-family:Inter,system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#111827;color:white;padding:22px 5vw;display:flex;justify-content:space-between;align-items:center}
+header h1{margin:0;font-size:22px}header span{font-size:13px;color:#cbd5e1}
+main{max-width:1200px;margin:28px auto;padding:0 18px}
+.grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+.stat b{display:block;font-size:28px}.stat small{color:var(--muted)}
+.toolbar{display:flex;gap:10px;justify-content:space-between;align-items:center;margin:24px 0 14px;flex-wrap:wrap}
+button{border:0;border-radius:9px;padding:10px 14px;background:var(--accent);color:white;font-weight:600;cursor:pointer}
+button.secondary{background:#e9edf5;color:#1f2937}input,select,textarea{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;background:white}
+table{width:100%;border-collapse:collapse;background:white;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+th,td{text-align:left;padding:13px;border-bottom:1px solid var(--line);font-size:14px}th{color:var(--muted);font-weight:600}
+.badge{padding:5px 9px;border-radius:999px;background:#eef2ff;font-size:12px}
+.actions{display:flex;gap:6px;flex-wrap:wrap}.empty{text-align:center;padding:40px;color:var(--muted)}
+.modal{display:none;position:fixed;inset:0;background:#0008;align-items:center;justify-content:center;padding:20px}.modal.open{display:flex}
+.modalbox{background:white;width:min(620px,100%);padding:22px;border-radius:16px}.formgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.full{grid-column:1/-1}
+label{font-size:12px;color:var(--muted);display:block;margin-bottom:5px}
+@media(max-width:800px){.grid{grid-template-columns:1fr 1fr}table{display:block;overflow:auto}.formgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><h1>AI Job Application Tracker</h1><span>Gemini + Google Cloud architecture</span></header>
+<main>
+<section class="grid">
+<div class="card stat"><b id="total">0</b><small>Total applications</small></div>
+<div class="card stat"><b id="interviews">0</b><small>Interviews</small></div>
+<div class="card stat"><b id="offers">0</b><small>Offers</small></div>
+<div class="card stat"><b id="followups">0</b><small>Action queue</small></div>
+</section>
+
+<div class="toolbar">
+<div><button onclick="openModal()">+ Add application</button> <button class="secondary" onclick="demoImport()">Load evaluator sample</button></div>
+<input id="search" style="max-width:280px" placeholder="Search company or role" oninput="render()">
+</div>
+
+<table><thead><tr><th>Company</th><th>Role</th><th>Date</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+<tbody id="rows"></tbody></table>
+</main>
+
+<div class="modal" id="modal"><div class="modalbox">
+<h2>Add application</h2>
+<form id="form" class="formgrid">
+<div><label>Company</label><input name="company" required></div>
+<div><label>Role</label><input name="role" required></div>
+<div><label>Application date</label><input name="applicationDate" type="date" required></div>
+<div><label>Job type</label><select name="jobType"><option>full-time</option><option>contract</option><option>part-time</option></select></div>
+<div><label>Status</label><select name="status"><option>Applied</option><option>Interview</option><option>Offer</option><option>Reject</option></select></div>
+<div class="full"><label>Job description</label><textarea name="description" rows="4"></textarea></div>
+<div class="full"><button type="submit">Save application</button> <button type="button" class="secondary" onclick="closeModal()">Cancel</button></div>
+</form></div></div>
+
+<script>
+let apps=[];
+const $=id=>document.getElementById(id);
+async function load(){const r=await fetch('/api/applications');apps=await r.json();render()}
+function render(){
+ const q=$('search').value.toLowerCase();
+ const visible=apps.filter(a=>(a.company+' '+a.role).toLowerCase().includes(q));
+ $('rows').innerHTML=visible.length?visible.map(a=>`<tr>
+ <td><b>${esc(a.company)}</b></td><td>${esc(a.role)}</td><td>${a.applicationDate}</td><td>${a.jobType}</td>
+ <td><span class="badge">${a.status}</span></td>
+ <td class="actions"><button onclick="generate('${a.id}','cover_letter')">Cover letter</button><button class="secondary" onclick="generate('${a.id}','follow_up_email')">Follow-up</button><button class="secondary" onclick="removeApp('${a.id}')">Delete</button></td>
+ </tr>`).join(''):'<tr><td colspan="6" class="empty">No applications yet.</td></tr>';
+ $('total').textContent=apps.length;$('interviews').textContent=apps.filter(a=>a.status==='Interview').length;
+ $('offers').textContent=apps.filter(a=>a.status==='Offer').length;$('followups').textContent=apps.filter(a=>a.status==='Applied').length;
+}
+function esc(s){return String(s||'').replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]))}
+function openModal(){$('modal').classList.add('open')}function closeModal(){$('modal').classList.remove('open')}
+$('form').onsubmit=async e=>{e.preventDefault();const d=Object.fromEntries(new FormData(e.target));await fetch('/api/applications',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});e.target.reset();closeModal();load()}
+async function removeApp(id){if(confirm('Delete this application?')){await fetch('/api/applications/'+id,{method:'DELETE'});load()}}
+async function generate(id,type){const a=apps.find(x=>x.id===id);const r=await fetch('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({company:a.company,role:a.role,type,description:a.description})});const d=await r.json();alert(d.draft)}
+async function demoImport(){const sample=[
+{id:1,from:'2026-06-01',to:'2026-06-30',type:'full-time',description:'Senior Backend Engineer - Python',company:'Example Labs'},
+{id:2,from:'2026-06-10',to:'2026-07-10',type:'contract',description:'Data Platform Engineer - streaming pipelines',company:'DataWorks'},
+{id:3,from:'2026-06-15',to:'2026-07-15',type:'full-time',description:'Cloud Engineer - Google Cloud',company:'CloudScale'}];
+await fetch('/api/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(sample)});load()}
+load();
+</script>
+</body></html>
