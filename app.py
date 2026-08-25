@@ -9,7 +9,7 @@ STATUSES = ["Applied", "Interview", "Offer", "Reject"]
 
 @app.get("/")
 def index():
-    return send_from_directory("static", "index.html")
+    return send_from_directory(".", "index.html")
 
 @app.get("/health")
 def health():
