@@ -814,7 +814,68 @@
 
 </div>
 
+<!-- EVALUATOR DATASET IMPORTER -->
 
+<div class="modal" id="importModal">
+
+    <div class="modal-box">
+
+        <div class="modal-header">
+
+            <div>
+                <h2>Import Evaluator Dataset</h2>
+
+                <div class="role">
+                    Import jobs and their associated AI drafts
+                </div>
+            </div>
+
+            <button
+                class="close"
+                onclick="closeImporter()"
+            >
+                ×
+            </button>
+
+        </div>
+
+
+        <div class="field">
+
+            <label>Evaluator JSON</label>
+
+            <textarea
+                id="evaluatorJson"
+                rows="18"
+                placeholder='{
+  "jobs": [],
+  "drafts": []
+}'
+            ></textarea>
+
+        </div>
+
+
+        <div class="modal-footer">
+
+            <button
+                class="secondary"
+                onclick="closeImporter()"
+            >
+                Cancel
+            </button>
+
+            <button
+                onclick="importEvaluatorDataset()"
+            >
+                Validate & Import
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
 <div id="toast" class="toast"></div>
 
 
