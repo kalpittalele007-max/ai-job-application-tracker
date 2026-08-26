@@ -489,7 +489,284 @@ def delete_application(app_id):
 # ---------------------------------------------------------
 
 @app.post("/api/import")
-def import_jobs():
+def import_evaluator_dataset():
+    """
+    Import the evaluator's job postings and associated drafts.
+
+    Expected format:
+
+    {
+        "jobs": [
+            {
+                "id": 1,
+                "from": "2026-06-01",
+                "to": "2026-06-30",
+                "type": "full-time",
+                "description": "Senior Backend Engineer - Python"
+            }
+        ],
+        "drafts": [
+            {
+                "id": 1,
+                "jobId": 1,
+                "type": "cover_letter",
+                "contents": "Dear Hiring Manager...",
+                "status": "draft"
+            }
+        ]
+    }
+    """
+
+    payload = request.get_json(silent=True)
+
+    if not isinstance(payload, dict):
+        return jsonify({
+            "error": "Expected an object containing jobs and drafts."
+        }), 400
+
+    jobs = payload.get("jobs", [])
+    drafts = payload.get("drafts", [])
+
+    if not isinstance(jobs, list):
+        return jsonify({
+            "error": "jobs must be an array."
+        }), 400
+
+    if not isinstance(drafts, list):
+        return jsonify({
+            "error": "drafts must be an array."
+        }), 400
+
+    required_job_fields = {
+        "id",
+        "from",
+        "to",
+        "type",
+        "description"
+    }
+
+    required_draft_fields = {
+        "id",
+        "jobId",
+        "type",
+        "contents",
+        "status"
+    }
+
+    errors = []
+
+    # -----------------------------
+    # Validate jobs
+    # -----------------------------
+
+    job_ids = set()
+
+    for index, job in enumerate(jobs):
+
+        if not isinstance(job, dict):
+            errors.append(
+                f"jobs[{index}] must be an object."
+            )
+            continue
+
+        missing = required_job_fields - set(job.keys())
+
+        if missing:
+            errors.append(
+                f"jobs[{index}] missing: {', '.join(sorted(missing))}"
+            )
+            continue
+
+        job_id = str(job["id"])
+
+        if job_id in job_ids:
+            errors.append(
+                f"Duplicate job ID: {job_id}"
+            )
+
+        job_ids.add(job_id)
+
+    # -----------------------------
+    # Validate drafts
+    # -----------------------------
+
+    draft_ids = set()
+
+    for index, draft in enumerate(drafts):
+
+        if not isinstance(draft, dict):
+            errors.append(
+                f"drafts[{index}] must be an object."
+            )
+            continue
+
+        missing = required_draft_fields - set(draft.keys())
+
+        if missing:
+            errors.append(
+                f"drafts[{index}] missing: {', '.join(sorted(missing))}"
+            )
+            continue
+
+        draft_id = str(draft["id"])
+
+        if draft_id in draft_ids:
+            errors.append(
+                f"Duplicate draft ID: {draft_id}"
+            )
+
+        draft_ids.add(draft_id)
+
+        if str(draft["jobId"]) not in job_ids:
+            errors.append(
+                f"drafts[{index}] references unknown jobId "
+                f"{draft['jobId']}"
+            )
+
+        if draft["type"] not in DRAFT_TYPES:
+            errors.append(
+                f"drafts[{index}] has invalid type "
+                f"{draft['type']}"
+            )
+
+        if draft["status"] not in ["draft", "sent"]:
+            errors.append(
+                f"drafts[{index}] has invalid status "
+                f"{draft['status']}"
+            )
+
+    if errors:
+        return jsonify({
+            "success": False,
+            "errors": errors,
+            "errorCount": len(errors)
+        }), 400
+
+    # -----------------------------
+    # Import
+    # -----------------------------
+
+    conn = get_db()
+
+    jobs_added = 0
+    jobs_skipped = 0
+    drafts_added = 0
+    drafts_skipped = 0
+
+    timestamp = now()
+
+    for job in jobs:
+
+        job_id = str(job["id"])
+
+        existing = conn.execute(
+            "SELECT id FROM applications WHERE id = ?",
+            (job_id,)
+        ).fetchone()
+
+        if existing:
+            jobs_skipped += 1
+            continue
+
+        conn.execute("""
+            INSERT INTO applications (
+                id,
+                company,
+                role,
+                application_date,
+                job_type,
+                description,
+                status,
+                created_at,
+                updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            job_id,
+            "Evaluator Dataset",
+            job["description"],
+            job["from"],
+            job["type"],
+            job["description"],
+            "Applied",
+            timestamp,
+            timestamp
+        ))
+
+        conn.execute("""
+            INSERT INTO status_history (
+                job_id,
+                old_status,
+                new_status,
+                changed_at
+            )
+            VALUES (?, ?, ?, ?)
+        """, (
+            job_id,
+            None,
+            "Applied",
+            timestamp
+        ))
+
+        jobs_added += 1
+
+    # -----------------------------
+    # Import drafts
+    # -----------------------------
+
+    for draft in drafts:
+
+        job_id = str(draft["jobId"])
+
+        existing = conn.execute("""
+            SELECT id
+            FROM drafts
+            WHERE job_id = ?
+              AND type = ?
+              AND contents = ?
+        """, (
+            job_id,
+            draft["type"],
+            draft["contents"]
+        )).fetchone()
+
+        if existing:
+            drafts_skipped += 1
+            continue
+
+        conn.execute("""
+            INSERT INTO drafts (
+                job_id,
+                type,
+                contents,
+                status,
+                created_at
+            )
+            VALUES (?, ?, ?, ?, ?)
+        """, (
+            job_id,
+            draft["type"],
+            draft["contents"],
+            draft["status"],
+            timestamp
+        ))
+
+        drafts_added += 1
+
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "success": True,
+        "jobs": {
+            "added": jobs_added,
+            "skipped": jobs_skipped
+        },
+        "drafts": {
+            "added": drafts_added,
+            "skipped": drafts_skipped
+        }
+    })
     payload = request.get_json(silent=True) or []
 
     if not isinstance(payload, list):
